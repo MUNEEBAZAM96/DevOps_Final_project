@@ -1,0 +1,12 @@
+# Keep the build context small and keep secrets and test files out of the image
+node_modules
+coverage
+tests
+.env
+.env.*
+*.log
+Dockerfile
+.dockerignore
+eslint.config.js
+.prettierrc.json
+.prettierignore

@@ -39,9 +39,43 @@ When `DB_SECRET_NAME` is set, `src/config.js` reads the username and password fr
 
 The backend creates the `tasks` table when it starts. There is no separate schema file.
 
-## Run locally
+## Run the stack locally
 
-Requires Node.js 24 and Docker.
+You need Docker Desktop (or any Docker Engine with the Compose plugin). From the repository root:
+
+```bash
+docker compose up --build -d
+```
+
+Open http://localhost:8080. `docker compose ps` should show `db`, `backend` and `frontend` as healthy after about 20 seconds.
+
+| Command | What it does |
+| --- | --- |
+| `docker compose logs -f backend` | Follow the backend logs |
+| `docker compose down` | Stop everything, keep the data |
+| `docker compose down -v` | Stop everything and delete the database |
+| `./scripts/build-and-test.sh` | Run every check the pipeline runs, then build both images |
+
+The local database password defaults to `change-me`. Set `DB_PASSWORD` in your shell to use another one. It exists only on your machine.
+
+Inside Compose the services find each other by service name on a private network: the backend reaches PostgreSQL at `db:5432`, and the frontend forwards `/api` to `http://backend:3000`. Only the frontend (port 8080) is published to the network; the backend is published on `127.0.0.1:3000` for testing with curl, and the database is not published at all.
+
+## Containers and images
+
+| Item | Value |
+| --- | --- |
+| Dockerfiles | `services/backend/Dockerfile`, `services/frontend/Dockerfile`: multi-stage, `node:24.22.3-alpine3.24` (pinned), run as user `1000`, no npm in the final image, built-in `HEALTHCHECK` |
+| Build context filter | `.dockerignore` in each service folder keeps `node_modules`, tests, coverage and `.env` files out of the images |
+| Local stack | `docker-compose.yml`: PostgreSQL 17, backend, frontend |
+| Production stack | `docker-compose.prod.yml`: pulls both images from ECR at one tag, reads the database password from Secrets Manager, logs to CloudWatch with the `awslogs` driver |
+| ECR repositories | `devops-task-tracker/backend`, `devops-task-tracker/frontend`, tag immutability on |
+| Image tags | `sha-<7-character commit SHA>` and `v<VERSION>.<pipeline run number>`, for example `sha-1a2b3c4` and `v1.0.57`. `VERSION` holds the major and minor numbers. No `latest` tag is ever pushed |
+| Instance startup | `deploy/bootstrap.sh` is the launch template user data. It reads the live tag from Parameter Store (`/devops-task-tracker/image-tag`) plus that tag's Compose file (`/devops-task-tracker/compose/<sha-tag>`), then pulls and starts the containers |
+| Manual rollback | Actions tab, `Manual rollback`, type a `sha-` or `v` tag. `scripts/resolve-tag.sh` checks the tag exists in ECR, `scripts/deploy.sh` updates the live SSM tag and refreshes the ASG, and `scripts/smoke-test.sh` checks the frontend and backend health endpoints |
+
+## Run without Docker (for development)
+
+Requires Node.js 24 and Docker (for the database only).
 
 ```bash
 docker run --name tasks-db -d -p 5432:5432 \
@@ -91,7 +125,11 @@ CI job names, in order:
 
 1. `3. Lint (ESLint)`
 2. `4. Format check (Prettier)`
-3. `6. Unit tests (Jest)`
+3. `5. Dockerfile lint (Hadolint)` (also runs ShellCheck on `scripts/` and `deploy/`)
+4. `6. Unit tests (Jest)`
+5. `9. Build images`
+6. `10. Image scan (Trivy)`: fails on any fixable HIGH or CRITICAL vulnerability
+7. `11. Push images to ECR`: runs only on a push to `main`
 
 ## Branching strategy
 

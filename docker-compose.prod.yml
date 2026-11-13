@@ -1,0 +1,41 @@
+# Production variant of docker-compose.yml, used on the EC2 instances.
+# The pipeline stores this file in SSM Parameter Store for each version
+# (/devops-task-tracker/compose/<tag>), and deploy/bootstrap.sh runs it.
+# The values in ${...} come from the .env file that bootstrap.sh writes.
+name: devops-task-tracker
+
+services:
+  backend:
+    image: ${REGISTRY}/devops-task-tracker/backend:${IMAGE_TAG}
+    environment:
+      PORT: "3000"
+      AWS_REGION: ${AWS_REGION}
+      DB_SECRET_NAME: ${DB_SECRET_NAME}
+      DB_HOST: ${DB_HOST}
+      DB_NAME: tasks
+      DB_SSL: "true"
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    # Container output goes straight to CloudWatch Logs (log groups made by Hassaan)
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: /devops-task-tracker/backend
+        tag: "{{.Name}}/{{.ID}}"
+
+  frontend:
+    image: ${REGISTRY}/devops-task-tracker/frontend:${IMAGE_TAG}
+    environment:
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    # Container output goes straight to CloudWatch Logs (log groups made by Hassaan)
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: /devops-task-tracker/frontend
+        tag: "{{.Name}}/{{.ID}}"

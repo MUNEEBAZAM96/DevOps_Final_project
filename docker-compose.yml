@@ -1,0 +1,54 @@
+# Runs the whole stack on a laptop with one command:
+#   docker compose up --build
+# Then open http://localhost:8080
+name: devops-task-tracker
+
+services:
+  db:
+    image: postgres:17.12-alpine3.24
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+      POSTGRES_DB: tasks
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "app", "-d", "tasks"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build: ./services/backend
+    image: devops-task-tracker/backend:local
+    environment:
+      PORT: "3000"
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: tasks
+      DB_USER: app
+      DB_PASSWORD: ${DB_PASSWORD:-change-me}
+      DB_SSL: "false"
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./services/frontend
+    image: devops-task-tracker/frontend:local
+    environment:
+      PORT: "8080"
+      BACKEND_URL: http://backend:3000
+    ports:
+      - "8080:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db-data:
