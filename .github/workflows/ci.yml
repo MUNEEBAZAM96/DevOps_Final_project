@@ -48,11 +48,28 @@ jobs:
             (cd "services/$service" && npm ci && npm run format:check)
           done
 
-  # Stage 5 (Hadolint) is added by Hadi between format and unit-tests.
-  # When it exists, change "needs" below to: needs: dockerfile-lint
+  dockerfile-lint:
+    name: "5. Dockerfile lint (Hadolint)"
+    needs: format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Lint the backend Dockerfile
+        uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: services/backend/Dockerfile
+          failure-threshold: info
+      - name: Lint the frontend Dockerfile
+        uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: services/frontend/Dockerfile
+          failure-threshold: info
+      - name: Check the shell scripts with ShellCheck
+        run: shellcheck scripts/*.sh deploy/*.sh
+
   unit-tests:
     name: "6. Unit tests (Jest)"
-    needs: format
+    needs: dockerfile-lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -74,3 +91,112 @@ jobs:
           name: coverage
           path: services/*/coverage/lcov.info
           retention-days: 7
+
+  # Stages 7 (SonarCloud) and 8 (Snyk) are added by Abdullah after unit-tests.
+  # When stage 8 exists, change "needs" below to: needs: dependency-scan
+  build-image:
+    name: "9. Build images"
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build both images and save them for the next jobs
+        run: |
+          set -euo pipefail
+          tag="sha-${GITHUB_SHA::7}"
+          for service in backend frontend; do
+            docker build -t "devops-task-tracker/$service:$tag" "services/$service"
+          done
+          docker save -o images.tar \
+            "devops-task-tracker/backend:$tag" "devops-task-tracker/frontend:$tag"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: images
+          path: images.tar
+          retention-days: 1
+
+  image-scan:
+    name: "10. Image scan (Trivy)"
+    needs: build-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6 # for .trivyignore, if the group ever needs one
+      - uses: actions/download-artifact@v7
+        with:
+          name: images
+      - name: Load the images
+        run: |
+          docker load -i images.tar
+          echo "TAG=sha-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      - name: Scan the backend image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: devops-task-tracker/backend:${{ env.TAG }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Scan the frontend image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: devops-task-tracker/frontend:${{ env.TAG }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  push-image:
+    name: "11. Push images to ECR"
+    needs: image-scan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # lets the job get short-lived AWS credentials through OIDC
+    outputs:
+      tag: ${{ steps.tags.outputs.sha_tag }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          name: images
+      - name: Load the images
+        run: docker load -i images.tar
+      - name: Work out the two tags
+        id: tags
+        run: |
+          echo "sha_tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "version_tag=v$(tr -d '[:space:]' < VERSION).${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+      - name: Sign in to AWS with OIDC (no stored keys)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Tag and push both images
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          SHA_TAG: ${{ steps.tags.outputs.sha_tag }}
+          VERSION_TAG: ${{ steps.tags.outputs.version_tag }}
+        run: |
+          set -euo pipefail
+          for service in backend frontend; do
+            repo="devops-task-tracker/$service"
+            for tag in "$SHA_TAG" "$VERSION_TAG"; do
+              # Tags are immutable in ECR, so skip a tag that is already there
+              # (for example when a run is re-run).
+              if aws ecr describe-images --repository-name "$repo" \
+                --image-ids imageTag="$tag" >/dev/null 2>&1; then
+                echo "$repo:$tag already exists, skipping"
+                continue
+              fi
+              docker tag "$repo:$SHA_TAG" "$REGISTRY/$repo:$tag"
+              docker push "$REGISTRY/$repo:$tag"
+            done
+          done
+      - name: Store this version's Compose file in Parameter Store
+        env:
+          SHA_TAG: ${{ steps.tags.outputs.sha_tag }}
+        run: |
+          aws ssm put-parameter --name "/devops-task-tracker/compose/$SHA_TAG" \
+            --type String --overwrite --value file://docker-compose.prod.yml

@@ -1,0 +1,8 @@
+# Keep LF line endings in the repository and in every checkout, including on
+# Windows. Shell scripts with CRLF endings fail on Linux (the EC2 instances and
+# the CI runners), and Prettier's format check expects LF.
+* text=auto eol=lf
+
+*.pdf binary
+*.png binary
+*.pem text eol=lf

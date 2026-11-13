@@ -1,0 +1,47 @@
+name: Manual rollback
+
+# Run from the Actions tab: choose "Manual rollback", click "Run workflow",
+# and type the image tag to go back to.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to roll back to, for example sha-1a2b3c4 or v1.0.42"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy # shares the lock with stage 12, so they never overlap
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Roll back to ${{ inputs.image_tag }}
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ASG_NAME: ${{ vars.ASG_NAME }}
+      APP_URL: ${{ vars.APP_URL }}
+      # Passed through an environment variable, never pasted into the script,
+      # so a strange input cannot inject shell commands.
+      INPUT_TAG: ${{ inputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Sign in to AWS with OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Check the tag exists and find its commit tag
+        id: resolve
+        run: bash ./scripts/resolve-tag.sh "$INPUT_TAG" >> "$GITHUB_OUTPUT"
+      - name: Deploy that version
+        env:
+          SHA_TAG: ${{ steps.resolve.outputs.sha_tag }}
+        run: bash ./scripts/deploy.sh "$SHA_TAG"
+      - name: Smoke test
+        run: bash ./scripts/smoke-test.sh "$APP_URL"
