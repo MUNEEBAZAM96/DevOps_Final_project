@@ -71,7 +71,7 @@ Inside Compose the services find each other by service name on a private network
 | ECR repositories | `devops-task-tracker/backend`, `devops-task-tracker/frontend`, tag immutability on |
 | Image tags | `sha-<7-character commit SHA>` and `v<VERSION>.<pipeline run number>`, for example `sha-1a2b3c4` and `v1.0.57`. `VERSION` holds the major and minor numbers. No `latest` tag is ever pushed |
 | Instance startup | `deploy/bootstrap.sh` is the launch template user data. It reads the live tag from Parameter Store (`/devops-task-tracker/image-tag`) plus that tag's Compose file (`/devops-task-tracker/compose/<sha-tag>`), then pulls and starts the containers |
-| Manual rollback | Actions tab, `Manual rollback`, type a `sha-` or `v` tag. `scripts/resolve-tag.sh` checks the tag exists in ECR before anything changes |
+| Manual rollback | Actions tab, `Manual rollback`, type a `sha-` or `v` tag. `scripts/resolve-tag.sh` checks the tag exists in ECR, `scripts/deploy.sh` updates the live SSM tag and refreshes the ASG, and `scripts/smoke-test.sh` checks the frontend and backend health endpoints |
 
 ## Run without Docker (for development)
 

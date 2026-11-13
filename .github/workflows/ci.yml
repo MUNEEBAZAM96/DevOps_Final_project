@@ -133,14 +133,12 @@ jobs:
         with:
           image-ref: devops-task-tracker/backend:${{ env.TAG }}
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
           exit-code: "1"
       - name: Scan the frontend image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: devops-task-tracker/frontend:${{ env.TAG }}
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
           exit-code: "1"
 
   push-image:
