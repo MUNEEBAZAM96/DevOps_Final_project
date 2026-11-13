@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Task Tracker</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Task Tracker</h1>
+      <form id="task-form">
+        <label for="task-title">New task</label>
+        <input id="task-title" maxlength="200" placeholder="New task" required />
+        <button type="submit">Add</button>
+      </form>
+      <p id="message" role="status"></p>
+      <ul id="task-list"></ul>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Stage 2 (Gitleaks) is added by Abdullah. When it exists, change
+  # "needs" below so that lint waits for it.
+  lint:
+    name: "3. Lint (ESLint)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/*/package-lock.json
+      - name: Run ESLint on each service
+        run: |
+          set -euo pipefail
+          for service in backend frontend; do
+            echo "Linting $service"
+            (cd "services/$service" && npm ci && npm run lint)
+          done
+
+  format:
+    name: "4. Format check (Prettier)"
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/*/package-lock.json
+      - name: Check formatting of each service
+        run: |
+          set -euo pipefail
+          for service in backend frontend; do
+            echo "Checking format of $service"
+            (cd "services/$service" && npm ci && npm run format:check)
+          done
+
+  # Stage 5 (Hadolint) is added by Hadi between format and unit-tests.
+  # When it exists, change "needs" below to: needs: dockerfile-lint
+  unit-tests:
+    name: "6. Unit tests (Jest)"
+    needs: format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/*/package-lock.json
+      - name: Run tests with coverage for each service
+        run: |
+          set -euo pipefail
+          for service in backend frontend; do
+            echo "Testing $service"
+            (cd "services/$service" && npm ci && npm test)
+          done
+      - name: Save coverage reports for SonarCloud (stage 7)
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage
+          path: services/*/coverage/lcov.info
+          retention-days: 7
