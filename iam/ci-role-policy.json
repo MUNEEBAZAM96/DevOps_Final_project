@@ -1,0 +1,34 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "GetEcrAuthorizationToken",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PushOnlyProjectImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage",
+        "ecr:BatchGetImage",
+        "ecr:DescribeImages"
+      ],
+      "Resource": [
+        "arn:aws:ecr:REGION:ACCOUNT_ID:repository/devops-task-tracker/backend",
+        "arn:aws:ecr:REGION:ACCOUNT_ID:repository/devops-task-tracker/frontend"
+      ]
+    },
+    {
+      "Sid": "StoreComposeFilePerVersion",
+      "Effect": "Allow",
+      "Action": "ssm:PutParameter",
+      "Resource": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/devops-task-tracker/compose/*"
+    }
+  ]
+}
