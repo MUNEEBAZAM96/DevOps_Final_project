@@ -9,10 +9,30 @@ permissions:
   contents: read
 
 jobs:
-  # Stage 2 (Gitleaks) is added by Abdullah. When it exists, change
-  # "needs" below so that lint waits for it.
+  secret-scan:
+    name: "2. Secret scan (Gitleaks)"
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.30.1
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Install Gitleaks and verify its checksum
+        run: |
+          set -euo pipefail
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          file="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSLO "$base/$file"
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSLO "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " $file$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum --check
+          tar -xzf "$file" gitleaks
+      - name: Scan the complete Git history
+        run: ./gitleaks git --redact --verbose .
+
   lint:
     name: "3. Lint (ESLint)"
+    needs: secret-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -92,11 +112,58 @@ jobs:
           path: services/*/coverage/lcov.info
           retention-days: 7
 
-  # Stages 7 (SonarCloud) and 8 (Snyk) are added by Abdullah after unit-tests.
-  # When stage 8 exists, change "needs" below to: needs: dependency-scan
+  sonarcloud:
+    name: "7. Static analysis (SonarCloud)"
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Download coverage reports from stage 6
+        uses: actions/download-artifact@v7
+        with:
+          name: coverage
+          path: services
+      - name: Analyse with SonarCloud
+        uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  dependency-scan:
+    name: "8. Dependency scan (Snyk)"
+    needs: sonarcloud
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/*/package-lock.json
+      - name: Install dependencies so Snyk sees the full tree
+        run: |
+          set -euo pipefail
+          for service in backend frontend; do
+            (cd "services/$service" && npm ci --ignore-scripts)
+          done
+      - name: Install Snyk CLI without lifecycle scripts
+        run: |
+          set -euo pipefail
+          install_dir="$RUNNER_TEMP/snyk-cli"
+          mkdir -p "$install_dir"
+          npm install --prefix "$install_dir" --ignore-scripts --no-save snyk@1.1308.4
+      - name: Fail on high or critical vulnerabilities
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          set -euo pipefail
+          install_dir="$RUNNER_TEMP/snyk-cli"
+          "$install_dir/node_modules/.bin/snyk" test --all-projects --severity-threshold=high
+
   build-image:
     name: "9. Build images"
-    needs: unit-tests
+    needs: dependency-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

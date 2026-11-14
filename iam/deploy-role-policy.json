@@ -1,0 +1,50 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadAndSwitchLiveVersion",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:PutParameter"
+      ],
+      "Resource": [
+        "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/devops-task-tracker/image-tag",
+        "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/devops-task-tracker/previous-image-tag"
+      ]
+    },
+    {
+      "Sid": "ReadVersionComposeFiles",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/devops-task-tracker/compose/*"
+    },
+    {
+      "Sid": "InspectProjectImagesForRollback",
+      "Effect": "Allow",
+      "Action": "ecr:DescribeImages",
+      "Resource": [
+        "arn:aws:ecr:REGION:ACCOUNT_ID:repository/devops-task-tracker/backend",
+        "arn:aws:ecr:REGION:ACCOUNT_ID:repository/devops-task-tracker/frontend"
+      ]
+    },
+    {
+      "Sid": "RefreshProjectAutoScalingGroup",
+      "Effect": "Allow",
+      "Action": [
+        "autoscaling:StartInstanceRefresh",
+        "autoscaling:CancelInstanceRefresh"
+      ],
+      "Resource": "arn:aws:autoscaling:REGION:ACCOUNT_ID:autoScalingGroup:*:autoScalingGroupName/devops-task-tracker-asg"
+    },
+    {
+      "Sid": "ObserveInstanceRefresh",
+      "Effect": "Allow",
+      "Action": [
+        "autoscaling:DescribeInstanceRefreshes",
+        "autoscaling:DescribeAutoScalingGroups"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

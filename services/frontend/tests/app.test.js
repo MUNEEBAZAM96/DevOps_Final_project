@@ -43,4 +43,21 @@ describe('frontend server', () => {
     expect(res.status).toBe(502);
     expect(res.body).toEqual({ error: 'backend unavailable' });
   });
+
+  test.each([
+    'ftp://example.com',
+    'http://user:password@example.com',
+    'http://example.com/api',
+    'http://example.com?redirect=https://example.org',
+    'http://example.com/#fragment',
+  ])('rejects an invalid backend origin: %s', (backendUrl) => {
+    expect(() => createApp({ backendUrl })).toThrow(TypeError);
+  });
+
+  test('returns 502 when an HTTPS backend cannot be reached', async () => {
+    const res = await request(createApp({ backendUrl: 'https://127.0.0.1:1' })).get('/api/tasks');
+
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: 'backend unavailable' });
+  });
 });

@@ -1,0 +1,48 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "GetEcrAuthorizationToken",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PullOnlyProjectImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchGetImage",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer"
+      ],
+      "Resource": [
+        "arn:aws:ecr:REGION:ACCOUNT_ID:repository/devops-task-tracker/backend",
+        "arn:aws:ecr:REGION:ACCOUNT_ID:repository/devops-task-tracker/frontend"
+      ]
+    },
+    {
+      "Sid": "ReadProjectSettings",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/devops-task-tracker/*"
+    },
+    {
+      "Sid": "ReadOnlyTheProjectDatabaseSecret",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "DB_SECRET_ARN"
+    },
+    {
+      "Sid": "WriteProjectContainerLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": [
+        "arn:aws:logs:REGION:ACCOUNT_ID:log-group:/devops-task-tracker/backend:*",
+        "arn:aws:logs:REGION:ACCOUNT_ID:log-group:/devops-task-tracker/frontend:*"
+      ]
+    }
+  ]
+}
