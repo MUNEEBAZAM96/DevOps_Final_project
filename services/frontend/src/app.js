@@ -32,8 +32,8 @@ function forwardToBackend(backendUrl) {
       return;
     }
 
-    const requestUrl = new URL(req.originalUrl, 'http://frontend.invalid');
-    if (requestUrl.origin !== 'http://frontend.invalid') {
+    const requestUrl = new URL(req.originalUrl, 'https://frontend.invalid');
+    if (requestUrl.origin !== 'https://frontend.invalid') {
       res.status(400).json({ error: 'invalid request target' });
       return;
     }

@@ -23,8 +23,8 @@ jobs:
           set -euo pipefail
           base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
           file="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          curl -fsSLO "$base/$file"
-          curl -fsSLO "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSLO "$base/$file"
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSLO "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
           grep " $file$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum --check
           tar -xzf "$file" gitleaks
       - name: Scan the complete Git history
@@ -125,8 +125,8 @@ jobs:
         with:
           name: coverage
           path: services
-      - name: Analyse and wait for the quality gate
-        uses: SonarSource/sonarqube-scan-action@v8
+      - name: Analyse with SonarCloud
+        uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -145,12 +145,21 @@ jobs:
         run: |
           set -euo pipefail
           for service in backend frontend; do
-            (cd "services/$service" && npm ci)
+            (cd "services/$service" && npm ci --ignore-scripts)
           done
+      - name: Install Snyk CLI without lifecycle scripts
+        run: |
+          set -euo pipefail
+          install_dir="$RUNNER_TEMP/snyk-cli"
+          mkdir -p "$install_dir"
+          npm install --prefix "$install_dir" --ignore-scripts --no-save snyk@1.1308.4
       - name: Fail on high or critical vulnerabilities
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: npx --yes snyk@1.1308.4 test --all-projects --severity-threshold=high
+        run: |
+          set -euo pipefail
+          install_dir="$RUNNER_TEMP/snyk-cli"
+          "$install_dir/node_modules/.bin/snyk" test --all-projects --severity-threshold=high
 
   build-image:
     name: "9. Build images"
